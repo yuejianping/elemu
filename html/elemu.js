@@ -60,6 +60,7 @@ function Elemu() {
 				},
 				esv: '62',
 				opc: '01',
+				opc2: '01',
 				epc_1: '',
 				edt_1: '',
 				epc_2: '',
@@ -79,9 +80,31 @@ function Elemu() {
 				epc_9: '',
 				edt_9: '',
 				epc_10: '',
-				edt_10: ''
+				edt_10: '',
+				epc2_1: '',
+				edt2_1: '',
+				epc2_2: '',
+				edt2_2: '',
+				epc2_3: '',
+				edt2_3: '',
+				epc2_4: '',
+				edt2_4: '',
+				epc2_5: '',
+				edt2_5: '',
+				epc2_6: '',
+				edt2_6: '',
+				epc2_7: '',
+				edt2_7: '',
+				epc2_8: '',
+				edt2_8: '',
+				epc2_9: '',
+				edt2_9: '',
+				epc2_10: '',
+				edt2_10: ''
 			},
-			edt_disabled: true
+			edt_disabled: true,
+			edt2_disabled: true,
+			setget_enabled: false
 		},
 		'packet-monitor': {
 			lang: '',
@@ -1089,12 +1112,10 @@ Elemu.prototype.sendPacketUpdateEpcList = function (event) {
 	let scode = packet['seoj']['class_code'];
 	let dcode = packet['deoj']['class_code'];
 	let esv = packet['esv'];
-
-	if (esv === '62') {
-		bind_data['edt_disabled'] = true;
-	} else {
-		bind_data['edt_disabled'] = false;
-	}
+	bind_data['setget_enabled'] = /^(6E|7E|5E)$/.test(esv);
+	bind_data['edt2_disabled'] = (esv === '6E');
+	// Get/INF_REQ の要求値と SetGet_RES の SET 成功値は PDC=0。
+	bind_data['edt_disabled'] = /^(62|63|7E)$/.test(esv);
 
 	let epc_num_max = 10;
 
@@ -1103,6 +1124,8 @@ Elemu.prototype.sendPacketUpdateEpcList = function (event) {
 		for (let i = 1; i <= epc_num_max; i++) {
 			packet['epc_' + i] = '';
 			packet['edt_' + i] = '';
+			packet['epc2_' + i] = '';
+			packet['edt2_' + i] = '';
 		}
 		return;
 	}
@@ -1125,6 +1148,8 @@ Elemu.prototype.sendPacketUpdateEpcList = function (event) {
 	for (let i = 1; i <= epc_num_max; i++) {
 		packet['epc_' + i] = '';
 		packet['edt_' + i] = '';
+		packet['epc2_' + i] = '';
+		packet['edt2_' + i] = '';
 	}
 
 	bind_data['class_code'] = selected_class_code;
@@ -1205,7 +1230,7 @@ Elemu.prototype.sendPacketExec = function (event) {
 				error = new Error('EPC-' + i + ' is required.');
 				break;
 			}
-			if (esv === '62') {
+			if (/^(62|63|7E)$/.test(esv)) {
 				edt = '';
 			}
 			prop_list.push({
@@ -1219,6 +1244,36 @@ Elemu.prototype.sendPacketExec = function (event) {
 		}
 	}
 
+	// SetGet Properties (OPCGet)
+	let prop_list2 = undefined;
+	if (/^(6E|7E|5E)$/.test(esv)) {
+		let opc2 = bd_packet['opc2'];
+		if (!opc2) {
+			this.modalErrorShow({
+				ja: 'OPCGet は必須です。',
+				en: 'OPCGet is required.'
+			});
+			return;
+		}
+		let opc2_value = parseInt(opc2, 16);
+		prop_list2 = [];
+		for (let i = 1; i <= opc2_value; i++) {
+			let epc = bd_packet['epc2_' + i];
+			let edt = bd_packet['edt2_' + i];
+			if (!epc) {
+				this.modalErrorShow({
+					ja: 'EPCGet-' + i + ' は必須です。',
+					en: 'EPCGet-' + i + ' is required.'
+				});
+				return;
+			}
+			if (esv === '6E') {
+				edt = '';
+			}
+			prop_list2.push({ epc: epc, edt: edt });
+		}
+	}
+
 	// パケット生成
 	let p = {
 		address: address,
@@ -1228,7 +1283,8 @@ Elemu.prototype.sendPacketExec = function (event) {
 			deoj: deoj,
 			esv: esv,
 			opc: opc,
-			properties: prop_list
+			properties: prop_list,
+			properties2: prop_list2
 		}
 	};
 
@@ -1251,7 +1307,9 @@ Elemu.prototype.sendPacketExec = function (event) {
 // ホーム画面:パケット送信:EDT詳細モーダル表示
 Elemu.prototype.sendPacketShowEdtDetailModal = function (event) {
 	let number = event.currentTarget.getAttribute('data-number');
-	let epc = this.components_bind_data['send-packet']['packet']['epc_' + number];
+	let group = event.currentTarget.getAttribute('data-group');
+	let prefix = (group === '2') ? 'epc2_' : 'epc_';
+	let epc = this.components_bind_data['send-packet']['packet'][prefix + number];
 
 	let ccode = this.components_bind_data['send-packet']['class_code'];
 	let cname_data = this.components_bind_data['send-packet']['class_name'];

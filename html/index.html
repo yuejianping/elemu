@@ -702,6 +702,7 @@
 										<template v-if="lang === 'ja'">OPC を選択してください</template>
 										<template v-if="lang === 'en'">Select an OPC</template>
 									</option>
+									<option v-if="packet.esv === '5E'" value="00">0x00</option>
 									<option value="01">0x01</option>
 									<option value="02">0x02</option>
 									<option value="03">0x03</option>
@@ -953,6 +954,47 @@
 										</div>
 									</div>
 									<input type="text" class="form-control form-control-sm" id="send-packet-edt-10" v-model="packet.edt_10" v-bind:placeholder="[ lang === 'ja' ? '16 進数表記 (例: 0F238A)' : '(e,g,. 0F238A)' ]" v-bind:disabled="edt_disabled">
+								</div>
+							</div>
+						</div>
+
+						<div v-if="setget_enabled">
+							<hr>
+							<div class="form-group row">
+								<div class="col-sm-6">
+									<label for="send-packet-opc2" class="col-form-label col-form-label-sm">OPCGet</label>
+									<select class="form-control form-control-sm" id="send-packet-opc2" v-model="packet.opc2">
+									<option value="">
+										<template v-if="lang === 'ja'">OPCGet を選択してください</template>
+										<template v-if="lang === 'en'">Select an OPCGet</template>
+									</option>
+									<option v-if="packet.esv === '5E'" value="00">0x00</option>
+									<option v-for="n in 10" v-bind:value="('0' + n.toString(16).toUpperCase()).slice(-2)">0x{{ ('0' + n.toString(16).toUpperCase()).slice(-2) }}</option>
+									</select>
+								</div>
+							</div>
+							<div class="form-group row" v-for="n in parseInt(packet.opc2 || '00', 16)" v-bind:key="'get-' + n">
+								<div class="col-sm-6">
+									<label v-bind:for="'send-packet-epc2-' + n" class="col-form-label col-form-label-sm">EPCGet-{{ n }}</label>
+									<select class="form-control form-control-sm" v-bind:id="'send-packet-epc2-' + n" v-model="packet['epc2_' + n]">
+										<option value=""></option>
+										<option v-for="e in epc_list" v-bind:value="e.epc">
+											0x{{ e.epc }}:
+											<template v-if="lang === 'ja'">{{ e.propertyName.ja }}</template>
+											<template v-if="lang === 'en'">{{ e.propertyName.en }}</template>
+										</option>
+									</select>
+								</div>
+								<div class="col-sm-6">
+									<label v-bind:for="'send-packet-edt2-' + n" class="col-form-label col-form-label-sm">EDTGet-{{ n }}</label>
+									<div class="input-group">
+										<div class="input-group-prepend" v-if="packet['epc2_' + n]">
+											<div class="input-group-text" v-on:click="showEdtDetailModal" v-bind:data-number="n" data-group="2">
+												<i class="fas fa-info-circle"></i>
+											</div>
+										</div>
+										<input type="text" class="form-control form-control-sm" v-bind:id="'send-packet-edt2-' + n" v-model="packet['edt2_' + n]" v-bind:placeholder="[ lang === 'ja' ? '16 進数表記 (例: 0F238A)' : '(e.g. 0F238A)' ]" v-bind:disabled="edt2_disabled">
+									</div>
 								</div>
 							</div>
 						</div>
@@ -1337,6 +1379,38 @@
 							</tr>
 						</table>
 					</div>
+				</td>
+			</tr>
+			<tr v-if="data.opc2">
+				<th>OPCGet</th>
+				<td>
+					<code class="hex">{{ data.opc2.hex }}</code> |
+					{{ data.opc2.value }}
+				</td>
+			</tr>
+			<tr v-if="data.properties2">
+				<th>PROPSGet</th>
+				<td>
+					<table class="table table-sm property" v-for="prop in data.properties2">
+						<tr>
+							<th>EPC</th>
+							<td>
+								<code class="hex">{{ prop.epc.hex }}</code> |
+								<template v-if="prop.epc.propertyName">
+									<span v-if="lang === 'ja'">{{ prop.epc.propertyName.ja }}</span>
+									<span v-if="lang === 'en'">{{ prop.epc.propertyName.en }}</span>
+								</template>
+							</td>
+						</tr>
+						<tr>
+							<th>PDC</th>
+							<td><code class="hex">{{ prop.pdc.hex }}</code> | {{ prop.pdc.value }}</td>
+						</tr>
+						<tr>
+							<th>EDT</th>
+							<td><code class="hex" v-if="prop.edt.hex">{{ prop.edt.hex }}</code></td>
+						</tr>
+					</table>
 				</td>
 			</tr>
 		</table>
