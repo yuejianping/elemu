@@ -16,6 +16,7 @@ function Elemu() {
 	this._lang = 'ja';
 	this._eoj_list = [];
 	this._edt_value_data = {};
+	this._edt_refresh_ids = {};
 	this._is_controller = false;
 	this._saved_eoj_panel = null;
 	try {
@@ -306,6 +307,9 @@ Elemu.prototype.initViews = function () {
 							}
 							this.$nextTick(() => {
 								window.requestAnimationFrame(() => {
+									if (_this.router.currentRoute.path !== '/home' || this.eoj !== saved.eoj) {
+										return;
+									}
 									this.$el.querySelector('#eoj-panel-epc-list').scrollTop = saved.scrollTop;
 									window.scrollTo(saved.windowX, saved.windowY);
 								});
@@ -601,6 +605,8 @@ Elemu.prototype.initDashboard = function () {
 		return this.getDeviceAllEdtData();
 	}).then((res) => {
 		this._edt_value_data = res;
+		// 一括取得中に通知された変更も、新しい一覧に反映する
+		Object.keys(this._edt_refresh_ids).forEach((eoj) => this.eojPanelRefreshEdt(eoj));
 		let selected_eoj = this._eoj_list[0]['eoj'];
 		let eoj = this.components_bind_data['eoj-panel']['eoj'] ||
 			(this._saved_eoj_panel && this._saved_eoj_panel.eoj);
@@ -785,6 +791,8 @@ Elemu.prototype.initWs = function () {
 	ws.onopen = () => {
 		this.app_bind_data['wsStatus'] = true;
 		console.log('WebSocket コネクションを確立しました。');
+		// 再接続時も、切断中に変わった値を反映する
+		Object.keys(this._edt_value_data).forEach((eoj) => this.eojPanelRefreshEdt(eoj));
 	};
 	ws.onmessage = (event) => {
 		let o = JSON.parse(event.data);
@@ -797,6 +805,8 @@ Elemu.prototype.initWs = function () {
 			if (alist.indexOf(addr) < 0) {
 				alist.push(addr);
 			}
+		} else if (o['event'] === 'epcupdated') {
+			this.eojPanelRefreshEdt(o['data']['eoj']);
 		} else if (o['event'] === 'powerstatuschanged') {
 			// 電源ステータス変化イベント
 			this.app_bind_data['powerStatus'] = o['data']['powerStatus'];
@@ -995,6 +1005,28 @@ Elemu.prototype.eojPanelUpdateEoj = function (event) {
 	this.components_bind_data['eoj-panel']['epc_list'] = this._edt_value_data[selected_eoj];
 };
 
+// 通知されたデバイスの EDT を既存の行に反映する
+Elemu.prototype.eojPanelRefreshEdt = function (eoj) {
+	let request_id = (this._edt_refresh_ids[eoj] || 0) + 1;
+	this._edt_refresh_ids[eoj] = request_id;
+	let epc_list = this._edt_value_data[eoj];
+	if (!epc_list) {
+		return;
+	}
+	return this._webapi.getDeviceEpcs(eoj).then((res) => {
+		// 古い応答や、デバイス一覧の再読込前の応答は反映しない
+		if (this._edt_refresh_ids[eoj] !== request_id || this._edt_value_data[eoj] !== epc_list) {
+			return;
+		}
+		res['data']['elProperties'].forEach((property) => {
+			let current = epc_list.find((e) => e['epc'] === property['epc']);
+			if (current) {
+				current['edt'] = property['edt'];
+			}
+		});
+	}).catch((error) => console.error(error));
+};
+
 // EOJ 削除
 Elemu.prototype.eojPanelDeleteEoj = function (event) {
 	// 選択されている EOJ を特定
@@ -1046,6 +1078,7 @@ Elemu.prototype.eojPanelReloadEdt = function (event) {
 	//エミュレート中のデバイス EOJ の EDT 情報を一括取得
 	this.getDeviceAllEdtData().then((res) => {
 		this._edt_value_data = res;
+		Object.keys(this._edt_refresh_ids).forEach((eoj) => this.eojPanelRefreshEdt(eoj));
 		let bind_data = this.components_bind_data['eoj-panel'];
 		let selected_eoj = bind_data['eoj'];
 		bind_data['epc_list'] = this._edt_value_data[selected_eoj];
