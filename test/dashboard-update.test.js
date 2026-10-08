@@ -32,7 +32,8 @@ function dashboard(saved = null) {
     VueRouter: function (options) {
       this.options = options;
       this.currentRoute = { path: '/home' };
-      this.beforeEach = this.push = () => {};
+      this.beforeEach = guard => { this.guard = guard; };
+      this.push = () => {};
     },
     Vue: function () { this.$mount = () => this; }
   });
@@ -240,4 +241,73 @@ test('scroll restoration does not move a different page entered before the next 
   d.app.router.currentRoute = { path: '/editEdt/013001/B3' };
   d.frames.forEach(fn => fn());
   assert.equal(d.scroll(), undefined);
+});
+
+for (const action of ['confirm', 'cancel']) {
+  test(`property edit ${action} restores both scroll positions and keeps the selected device`, async () => {
+    const d = dashboard();
+    d.app.initViews();
+    d.app.app_initialized = true;
+    const routes = d.app.router.options.routes;
+    const home = routes.find(route => route.path === '/home').component.components['eoj-panel'];
+    const editor = routes.find(route => route.path === '/editEdt/:eoj/:epc').component;
+    d.app.router.push = to => {
+      const from = d.app.router.currentRoute;
+      d.app.router.guard(to, from, redirect => {
+        assert.equal(redirect, undefined);
+        d.app.router.currentRoute = to;
+        d.app.router.options.scrollBehavior(to, from);
+        if (to.path === '/home') {
+          d.list.scrollTop = 0;
+          home.mounted.call({ eoj: d.panel.eoj, $nextTick: fn => fn(), $el: { querySelector: () => d.list } });
+        }
+      });
+    };
+    d.app.router.push({ path: '/editEdt/013001/B3' });
+    assert.equal(d.app._saved_eoj_panel.scrollTop, 230);
+    assert.equal(d.app._saved_eoj_panel.windowY, 420);
+    assert.deepEqual(d.scroll(), [0, 0]);
+
+    let writes = 0;
+    const replacement = [{ epc: 'B3', edt: { hex: '1A' } }];
+    d.app.modalLoadingShow = d.app.modalLoadingClose = () => {};
+    d.app.modalErrorShow = message => { throw new Error(message); };
+    d.app.getDeviceAllEdtData = async () => ({ '013001': replacement, '0EF001': d.node });
+    d.app._webapi.updateDeviceEdt = async (eoj, epc, hex) => {
+      assert.deepEqual([eoj, epc, hex], ['013001', 'B3', '1A']);
+      writes++;
+    };
+    if (action === 'cancel') {
+      editor.methods.editEdtCancel();
+    } else {
+      const form = d.app.components_bind_data['edit-edt'];
+      form.eoj = '013001';
+      form.epc = 'B3';
+      form.inputs = { hex: '1a' };
+      d.app.device_details['0130'] = { elProperties: [{ epc: 'B3', data: { type: 'raw' } }] };
+      editor.methods.editEdt();
+    }
+    await settle();
+    d.frames.forEach(fn => fn());
+    assert.equal(writes, action === 'confirm' ? 1 : 0);
+    assert.equal(d.app.router.currentRoute.path, '/home');
+    assert.equal(d.panel.eoj, '013001');
+    assert.equal(d.list.scrollTop, 230);
+    assert.deepEqual(d.scroll(), [5, 420]);
+    assert.equal(d.app._saved_eoj_panel, null);
+    assert.equal(d.panel.epc_list, action === 'confirm' ? replacement : d.air);
+  });
+}
+
+test('other dashboard navigation does not save or later restore an edit position', () => {
+  const d = dashboard();
+  d.app.initViews();
+  d.app.app_initialized = true;
+  const navigate = (from, to) => d.app.router.guard({ path: to }, { path: from }, () => {});
+  navigate('/home', '/conf');
+  assert.equal(d.app._saved_eoj_panel, null);
+  navigate('/home', '/editEdt/013001/B3');
+  assert.equal(d.app._saved_eoj_panel.eoj, '013001');
+  navigate('/editEdt/013001/B3', '/conf');
+  assert.equal(d.app._saved_eoj_panel, null);
 });

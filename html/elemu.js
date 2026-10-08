@@ -546,6 +546,20 @@ Elemu.prototype.initViews = function () {
 			// 初期化されていなければ /init へリダイレクト
 			next('/init');
 		} else {
+			// 値の編集から戻るときは、既存の復元処理で元の位置に戻す
+			if (from.path === '/home' && /^\/editEdt\//.test(to.path)) {
+				let list = document.getElementById('eoj-panel-epc-list');
+				if (list) {
+					this._saved_eoj_panel = {
+						eoj: this.components_bind_data['eoj-panel']['eoj'],
+						scrollTop: list.scrollTop,
+						windowX: window.scrollX,
+						windowY: window.scrollY
+					};
+				}
+			} else if (/^\/editEdt\//.test(from.path) && to.path !== '/home') {
+				this._saved_eoj_panel = null;
+			}
 			next();
 		}
 	});
