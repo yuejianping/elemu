@@ -17,6 +17,12 @@ function Elemu() {
 	this._eoj_list = [];
 	this._edt_value_data = {};
 	this._is_controller = false;
+	this._saved_eoj_panel = null;
+	try {
+		this._saved_eoj_panel = JSON.parse(window.sessionStorage.getItem('elemu-eoj-panel'));
+	} catch (error) {
+		// 保存データが読めない場合は通常どおり表示する
+	}
 
 	this.router = null;
 	this.app = null;
@@ -228,6 +234,23 @@ Elemu.prototype.init = function () {
 	this.initViews();
 	// WebSocket
 	this.initWs();
+	// ブラウザーの再読込前に、選択中のデバイスと表示位置を保存する
+	window.addEventListener('pagehide', () => {
+		let list = document.getElementById('eoj-panel-epc-list');
+		if (!list) {
+			return;
+		}
+		try {
+			window.sessionStorage.setItem('elemu-eoj-panel', JSON.stringify({
+				eoj: this.components_bind_data['eoj-panel']['eoj'],
+				scrollTop: list.scrollTop,
+				windowX: window.scrollX,
+				windowY: window.scrollY
+			}));
+		} catch (error) {
+			// ストレージが使えない場合も再読込を妨げない
+		}
+	});
 };
 
 Elemu.prototype.initViews = function () {
@@ -274,6 +297,19 @@ Elemu.prototype.initViews = function () {
 						template: $('#tmpl-component-eoj-panel').text(),
 						data: () => {
 							return this.components_bind_data['eoj-panel'];
+						},
+						mounted: function () {
+							let saved = _this._saved_eoj_panel;
+							_this._saved_eoj_panel = null;
+							if (!saved || saved.eoj !== this.eoj) {
+								return;
+							}
+							this.$nextTick(() => {
+								window.requestAnimationFrame(() => {
+									this.$el.querySelector('#eoj-panel-epc-list').scrollTop = saved.scrollTop;
+									window.scrollTo(saved.windowX, saved.windowY);
+								});
+							});
 						},
 						methods: {
 							// EOJ プルダウンが変更されたときの処理
@@ -566,8 +602,9 @@ Elemu.prototype.initDashboard = function () {
 	}).then((res) => {
 		this._edt_value_data = res;
 		let selected_eoj = this._eoj_list[0]['eoj'];
-		if (this.components_bind_data['eoj-panel']['eoj']) {
-			let eoj = this.components_bind_data['eoj-panel']['eoj'];
+		let eoj = this.components_bind_data['eoj-panel']['eoj'] ||
+			(this._saved_eoj_panel && this._saved_eoj_panel.eoj);
+		if (eoj) {
 			if (this._edt_value_data[eoj]) {
 				selected_eoj = eoj;
 			}
